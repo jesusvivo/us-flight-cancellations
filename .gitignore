@@ -1,0 +1,12 @@
+data/
+models/
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+*.joblib
+spark-warehouse/
+metastore_db/
+derby.log
+.DS_Store
