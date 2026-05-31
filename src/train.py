@@ -9,6 +9,7 @@ from pyspark.ml.classification import LogisticRegression as MLlibLR
 from pyspark.ml.classification import LogisticRegressionModel as MLlibLRModel
 from pyspark.sql import DataFrame
 from sklearn.metrics import f1_score
+from xgboost import XGBClassifier
 
 from src import config
 from src.logistic_regression import LogisticRegression
@@ -69,3 +70,9 @@ def fit_mllib_lr(train_df: DataFrame) -> MLlibLRModel:
         maxIter=config.MLLIB_MAX_ITER,
     )
     return lr.fit(train_df)
+
+
+def fit_xgboost(X_train: np.ndarray, y_train: np.ndarray) -> XGBClassifier:
+    """Tree-ensemble baseline on the same Spark-prepared features. Captures
+    non-linear interactions that a linear model can't see."""
+    return XGBClassifier(**config.XGBOOST_PARAMS).fit(X_train, y_train)

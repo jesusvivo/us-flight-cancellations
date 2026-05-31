@@ -55,3 +55,18 @@ LAMBDA_GRID = (0.001, 0.01, 0.1, 1.0, 10.0, 100.0)
 
 # MLlib LR comparison model: maxIter matches the upper bound of N_ITERATIONS_GRID.
 MLLIB_MAX_ITER = 1000
+
+# XGBoost comparison model. Single sensible default — the point is "tree
+# ensemble beats LR on this data", not "I tuned XGB to death." The custom LR
+# already carries the tuning narrative.
+XGBOOST_PARAMS = {
+    "n_estimators": 300,
+    "max_depth": 6,
+    "learning_rate": 0.1,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "objective": "binary:logistic",
+    "eval_metric": "auc",
+    "random_state": RANDOM_STATE,
+    "n_jobs": -1,
+}

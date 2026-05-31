@@ -1,21 +1,25 @@
 # US Flight Cancellations
 
-Binary classification on the Kaggle [Airline Delay and Cancellation 2009-2018](https://www.kaggle.com/datasets/yuanyuwendymu/airline-delay-and-cancellation-data-2009-2018) dataset (~7 M scheduled US flights). Two model implementations on the same Spark-prepared features:
+Binary classification on the Kaggle [Airline Delay and Cancellation 2009-2018](https://www.kaggle.com/datasets/yuanyuwendymu/airline-delay-and-cancellation-data-2009-2018) dataset (~7 M scheduled US flights). Three model implementations on the same Spark-prepared features:
 
 1. A **logistic regression hand-built from scratch** — sigmoid, log-loss, batch gradient descent with L2 regularization, all in NumPy.
 2. **PySpark MLlib's `LogisticRegression`** as a sanity check against the hand-rolled implementation.
+3. **XGBoost** as a tree-ensemble baseline — what a more expressive model class does with the same features.
 
 Originally a UNIMI dual-course final project ("Algorithms for Massive Datasets" + "Statistical Methods for Machine Learning"); refactored here into a modular pipeline as a portfolio piece.
 
 ## Results
 
-The from-scratch LR and PySpark MLlib's `LogisticRegression` land within ~0.001 of each other on every metric — exactly the parity that motivates the comparison.
+Two stories at once:
 
-| Metric | Custom LR (NumPy) | MLlib LR | Δ |
+- The from-scratch LR and PySpark MLlib's `LogisticRegression` land within ~0.001 of each other — exactly the parity that validates the hand-rolled implementation against a battle-tested library.
+- XGBoost lifts AUC by **+0.14** and accuracy by **+11 points** over both linear models on the same features. The features carry strong non-linear interactions (carrier × route × scheduled time) that no linear model can see.
+
+| Metric | Custom LR (NumPy) | MLlib LR | XGBoost |
 | --- | --- | --- | --- |
-| Accuracy | 0.5767 | 0.5750 | 0.0017 |
-| Macro F1 | 0.5767 | 0.5749 | 0.0018 |
-| ROC AUC | 0.6056 | 0.6068 | 0.0012 |
+| Accuracy | 0.5767 | 0.5750 | **0.6849** |
+| Macro F1 | 0.5767 | 0.5749 | **0.6849** |
+| ROC AUC | 0.6056 | 0.6068 | **0.7486** |
 
 (Numbers from `python -m src.pipeline` on the 10% balanced subsample, seed `42`.)
 
@@ -23,16 +27,18 @@ The from-scratch LR and PySpark MLlib's `LogisticRegression` land within ~0.001 
 | --- | --- |
 | From-scratch LR (NumPy) | ![Custom LR ROC](reports/figures/roc_custom.png) |
 | PySpark MLlib LR | ![MLlib LR ROC](reports/figures/roc_mllib.png) |
+| XGBoost | ![XGBoost ROC](reports/figures/roc_xgboost.png) |
 
-Absolute performance is modest because the features are pre-departure-only (carrier, origin, destination, scheduled times, weekday/month) — no weather, no aircraft, no real-time ATC. The interesting part is the parity, not the headline AUC.
+The LR vs LR parity result still validates the math (the *point* of the from-scratch implementation); XGBoost shows that on this dataset the limiting factor was the model class, not the implementation. A linear decision surface can't represent "this carrier at this hour on a Friday between these two airports is more cancellation-prone" — a tree ensemble can.
 
 ## Approach
 
 - **PySpark for the heavy lifting.** Raw CSVs go straight into a SparkSession. Undersample the majority class, take a 10% slice, derive weekday + month from `FL_DATE`, `StringIndexer` on three categoricals (`OP_CARRIER`, `ORIGIN`, `DEST`), drop two correlated columns (`CRS_ARR_TIME`, `DISTANCE`), then `VectorAssembler` + `StandardScaler` via a Spark ML `Pipeline`.
 - **From-scratch logistic regression.** The class lives in `src/logistic_regression.py` — `fit`, `predict`, `predict_proba`. Batch gradient descent on the log-loss with an L2 penalty whose gradient actually fires (the original notebook added the penalty to the *reported* loss but never to `dW`, so the lambda hyperparameter was a no-op). See "What I corrected" below.
 - **Two-phase grid search** on the custom LR (matches the original notebook's approach): first sweep `learning_rate × n_iterations` with `lambda` fixed; then sweep `lambda` with the winners fixed.
-- **MLlib comparison.** A second LR trained directly via `pyspark.ml.classification.LogisticRegression` on the same feature column. The README's ROC pair lets a reader eyeball whether the hand-rolled implementation is doing something reasonable, and the printed metrics quantify it.
-- **Persistence.** Custom LR → joblib. MLlib model + fitted feature pipeline → Spark's native `.save()` (a directory each). Test arrays cached as `.npz` so `--evaluate` regenerates figures without needing Spark.
+- **MLlib comparison.** A second LR trained directly via `pyspark.ml.classification.LogisticRegression` on the same feature column. The README's ROC plots let a reader eyeball whether the hand-rolled implementation is doing something reasonable, and the printed metrics quantify it.
+- **XGBoost as a third comparator.** Same Spark-prepared features, sensible defaults (`max_depth=6`, `n_estimators=300`, `learning_rate=0.1`) — no grid search. The custom LR already carries the tuning narrative; XGBoost is here to demonstrate when a tree ensemble is the right tool for the data.
+- **Persistence.** Custom LR and XGBoost → joblib. MLlib model + fitted feature pipeline → Spark's native `.save()` (a directory each). Test arrays cached as `.npz` so `--evaluate` regenerates figures without needing Spark.
 
 ## What I corrected from the original notebook
 
@@ -104,4 +110,4 @@ The full pipeline runs in ~5–10 minutes on a developer laptop: a couple of min
 - **Binary task only.** The dataset has a multi-class delay reason field; this project intentionally stays on the binary `CANCELLED` target.
 - **No cross-validation.** Single `randomSplit(0.8, 0.2)` matches the original; not worth introducing CV without also expanding the data slice.
 
-A follow-up "improve" pass could replace PySpark with Polars/DuckDB (much faster locally, no JVM), or swap the LR for a tree ensemble. Out of scope for this iteration.
+A follow-up "improve" pass could replace PySpark with Polars/DuckDB (much faster locally, no JVM). Tree ensemble was added in the second iteration — see XGBoost above.

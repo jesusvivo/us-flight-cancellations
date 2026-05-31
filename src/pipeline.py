@@ -25,12 +25,13 @@ from src.data import load_raw, make_spark_session, undersample_balanced
 from src.evaluate import compute_metrics, plot_roc_curve, text_report
 from src.features import build_feature_pipeline, drop_redundant_columns, extract_date_parts
 from src.logistic_regression import LogisticRegression
-from src.train import fit_custom_lr, fit_mllib_lr, two_phase_grid_search
+from src.train import fit_custom_lr, fit_mllib_lr, fit_xgboost, two_phase_grid_search
 
 logger = logging.getLogger(__name__)
 
 CUSTOM_LR_PATH = config.MODELS_DIR / "custom_lr.joblib"
 MLLIB_LR_DIR = config.MODELS_DIR / "mllib_lr"
+XGB_PATH = config.MODELS_DIR / "xgboost.joblib"
 FEATURE_PIPELINE_DIR = config.MODELS_DIR / "feature_pipeline"
 TEST_ARRAYS_PATH = config.MODELS_DIR / "test_arrays.npz"
 BEST_PARAMS_PATH = config.MODELS_DIR / "best_params.json"
@@ -91,7 +92,12 @@ def run_train() -> None:
     mllib_model = fit_mllib_lr(train_df)
     y_test_mllib, y_score_mllib = _mllib_test_scores(mllib_model, test_df)
 
+    logger.info("Fitting XGBoost...")
+    xgb_model = fit_xgboost(X_train, y_train)
+    y_score_xgb = xgb_model.predict_proba(X_test)[:, 1]
+
     joblib.dump(custom_model, CUSTOM_LR_PATH)
+    joblib.dump(xgb_model, XGB_PATH)
     mllib_model.write().overwrite().save(str(MLLIB_LR_DIR))
     feature_pipeline.write().overwrite().save(str(FEATURE_PIPELINE_DIR))
     np.savez(
@@ -100,10 +106,11 @@ def run_train() -> None:
         y_test=y_test,
         y_test_mllib=y_test_mllib,
         y_score_mllib=y_score_mllib,
+        y_score_xgb=y_score_xgb,
     )
     BEST_PARAMS_PATH.write_text(json.dumps({"best_params": best_params, "grid_search_f1": best_cv}, indent=2))
 
-    _evaluate_and_report(custom_model, X_test, y_test, y_test_mllib, y_score_mllib)
+    _evaluate_and_report(custom_model, X_test, y_test, y_test_mllib, y_score_mllib, y_score_xgb)
     spark.stop()
 
 
@@ -117,9 +124,10 @@ def run_evaluate() -> None:
     arrays = np.load(TEST_ARRAYS_PATH)
     X_test, y_test = arrays["X_test"], arrays["y_test"]
     y_test_mllib, y_score_mllib = arrays["y_test_mllib"], arrays["y_score_mllib"]
+    y_score_xgb = arrays["y_score_xgb"]
     custom_model = joblib.load(CUSTOM_LR_PATH)
 
-    _evaluate_and_report(custom_model, X_test, y_test, y_test_mllib, y_score_mllib)
+    _evaluate_and_report(custom_model, X_test, y_test, y_test_mllib, y_score_mllib, y_score_xgb)
 
 
 def _evaluate_and_report(
@@ -128,6 +136,7 @@ def _evaluate_and_report(
     y_test: np.ndarray,
     y_test_mllib: np.ndarray,
     y_score_mllib: np.ndarray,
+    y_score_xgb: np.ndarray,
 ) -> None:
     y_pred_custom = custom_model.predict(X_test)
     y_score_custom = custom_model.predict_proba(X_test)
@@ -147,7 +156,15 @@ def _evaluate_and_report(
         y_test_mllib, y_score_mllib, "PySpark MLlib LR", config.FIGURES_DIR / "roc_mllib.png"
     )
 
-    print(f"\nCustom AUC: {auc_custom:.4f}  |  MLlib AUC: {auc_mllib:.4f}")
+    print("\n=== XGBoost ===")
+    y_pred_xgb = (y_score_xgb > 0.5).astype(int)
+    print(text_report(y_test, y_pred_xgb))
+    print(json.dumps(compute_metrics(y_test, y_pred_xgb), indent=2))
+    auc_xgb = plot_roc_curve(
+        y_test, y_score_xgb, "XGBoost", config.FIGURES_DIR / "roc_xgboost.png"
+    )
+
+    print(f"\nCustom AUC: {auc_custom:.4f}  |  MLlib AUC: {auc_mllib:.4f}  |  XGBoost AUC: {auc_xgb:.4f}")
 
 
 def main() -> None:
