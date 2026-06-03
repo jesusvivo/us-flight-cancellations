@@ -1,6 +1,6 @@
 """Smoke test for the Spark feature pipeline on a tiny in-memory DataFrame.
 
-Slow because SparkSession spin-up is slow (~5 s on a cold JVM), but real — runs
+Slow because SparkSession spin-up is slow (~5 s on a cold JVM), but real, it runs
 the actual `extract_date_parts` + `build_feature_pipeline` code paths against a
 shape that matches the production schema, just much smaller.
 """

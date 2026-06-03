@@ -40,7 +40,7 @@ def plot_roc_curve(
     auc = float(roc_auc_score(y_true, y_score))
     fig, ax = plt.subplots(figsize=(5, 5))
     RocCurveDisplay.from_predictions(y_true, y_score, ax=ax)
-    ax.set_title(f"{title} — AUC = {auc:.3f}")
+    ax.set_title(f"{title}: AUC = {auc:.3f}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=120, bbox_inches="tight")
     plt.close(fig)

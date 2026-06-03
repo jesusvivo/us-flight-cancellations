@@ -2,8 +2,8 @@
 
 Deliberately preserved alongside `pyspark.ml.classification.LogisticRegression`
 because the *point* of this project's "Statistical Methods for ML" angle was
-understanding the math — sigmoid + log loss + gradient descent on weights and
-bias — rather than calling a library. The pipeline trains both this and the
+understanding the math (sigmoid, log loss, gradient descent on weights and
+bias) rather than calling a library. The pipeline trains both this and the
 MLlib version and the README compares their metrics; near-parity validates the
 implementation.
 
@@ -18,7 +18,7 @@ This is a port of the original notebook's class with four corrections:
   so regularization actually shrinks weights.
 - The lambda grid-search bug in the original notebook (it used the loop index
   as `lambda_value` instead of the looked-up value) doesn't apply here because
-  this class never executes the search itself — `train.grid_search` is
+  this class never executes the search itself; `train.grid_search` is
   responsible for plumbing values in correctly.
 """
 from __future__ import annotations
@@ -66,8 +66,7 @@ class LogisticRegression:
             z = X @ self.weights + self.bias
             y_hat = self._sigmoid(z)
 
-            # Numerically guard log(0) — large negative loss spikes break tests
-            # and don't actually help training.
+            # Numerically guard log(0) to avoid loss spikes.
             eps = 1e-12
             log_loss = -(1.0 / m) * np.sum(
                 y * np.log(y_hat + eps) + (1.0 - y) * np.log(1.0 - y_hat + eps)
@@ -75,7 +74,7 @@ class LogisticRegression:
             # Standard textbook L2: (lambda / 2m) * ||w||^2 in the loss,
             # (lambda / m) * w in the gradient. Scaling by 1/m keeps the
             # regularization comparable to the data loss across batch sizes,
-            # and stable at the full lambda grid (0.001–100) the original used.
+            # and stable at the full lambda grid (0.001-100) the original used.
             penalty = (self.lambda_value / (2.0 * m)) * np.sum(np.square(self.weights))
             self.loss_history_.append(float(log_loss + penalty))
 
